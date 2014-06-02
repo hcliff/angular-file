@@ -25,16 +25,13 @@ angular.module('ur.file', []).config(['$provide', function($provide) {
   /**
    * Initializes XHR object with parameters from $httpBackend.
    */
-  function prepXHR(method, url, headers, callback, withCredentials, type, manager) {
+  function prepXHR(method, url, post, callback, headers, timeout, wc, manager) {
     var xhr = new XHR();
     var status;
 
     xhr.open(method, url, true);
-
-    if (type) {
-      xhr.type = type;
-      headers['Content-Type'] = type;
-    }
+    // H.C - reset the content type to use file boundaries
+    headers['Content-Type'] = null;
 
     angular.forEach(headers, function(value, key) {
       (value) ? xhr.setRequestHeader(key, value) : null;
@@ -50,7 +47,7 @@ angular.module('ur.file', []).config(['$provide', function($provide) {
       }
     };
 
-    if (withCredentials) {
+    if (wc) {
       xhr.withCredentials = true;
     }
     return xhr;
@@ -61,27 +58,17 @@ angular.module('ur.file', []).config(['$provide', function($provide) {
    */
   $provide.decorator('$httpBackend', function($delegate, $window, uploadManager) {
     return function(method, url, post, callback, headers, timeout, wc) {
-      var containsFile = false, result = null, manager = uploadManager;
 
-      if (post && angular.isObject(post)) {
-        containsFile = hasFile(post);
-      }
+      if (hasFile(post)) {
 
-      if (angular.isObject(post)) {
-        angular.forEach({
-          name: 'X-File-Name',
-          size: 'X-File-Size',
-          lastModifiedDate: 'X-File-Last-Modified'
-        }, function(header, key) {
-          if (post && post[key]) {
-            if (!headers[header]) headers[header] = post[key];
-          }
+        data = new FormData();
+        angular.forEach(post, function(value, field){
+          data.append(field, value);
         });
+
+        return prepXHR(method, url, data, callback, headers, timeout, wc, uploadManager).send(data);
       }
 
-      if (post && post instanceof Blob) {
-        return prepXHR(method, url, headers, callback, wc, post.type, manager).send(post);
-      }
       $delegate(method, url, post, callback, headers, timeout, wc);
     };
   });
@@ -92,7 +79,7 @@ angular.module('ur.file', []).config(['$provide', function($provide) {
    */
   var hasFile = function(data) {
     for (var n in data) {
-      if (data[n] instanceof Blob) {
+      if (data[n] instanceof File) {
         return true;
       }
       if ((angular.isObject(data[n]) || angular.isArray(data[n])) && hasFile(data[n])) {
@@ -110,8 +97,9 @@ angular.module('ur.file', []).config(['$provide', function($provide) {
     var transformer = $delegate.defaults.transformRequest[0];
 
     $delegate.defaults.transformRequest = [function(data) {
-      return data instanceof Blob ? data : transformer(data);
+      return hasFile(data) ? data : transformer(data);
     }];
+
     return $delegate;
   });
 
