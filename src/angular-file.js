@@ -13,67 +13,6 @@
 angular.module('ur.file', []).config(['$provide', function($provide) {
 
   /**
-   * XHR initialization, copied from Angular core, because it's buried inside $HttpProvider.
-   */
-  var XHR = window.XMLHttpRequest || function() {
-    try { return new ActiveXObject("Msxml2.XMLHTTP.6.0"); } catch (e1) {}
-    try { return new ActiveXObject("Msxml2.XMLHTTP.3.0"); } catch (e2) {}
-    try { return new ActiveXObject("Msxml2.XMLHTTP"); } catch (e3) {}
-    throw new Error("This browser does not support XMLHttpRequest.");
-  };
-
-  /**
-   * Initializes XHR object with parameters from $httpBackend.
-   */
-  function prepXHR(method, url, post, callback, headers, timeout, wc, manager) {
-    var xhr = new XHR();
-    var status;
-
-    xhr.open(method, url, true);
-    // H.C - reset the content type to use file boundaries
-    headers['Content-Type'] = null;
-
-    angular.forEach(headers, function(value, key) {
-      (value) ? xhr.setRequestHeader(key, value) : null;
-    });
-
-    manager.register(xhr);
-
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState == 4) {
-        manager.unregister(xhr);
-        var response = xhr.response || xhr.responseText;
-        callback(status = status || xhr.status, response, xhr.getAllResponseHeaders());
-      }
-    };
-
-    if (wc) {
-      xhr.withCredentials = true;
-    }
-    return xhr;
-  }
-
-  /**
-   * Hook into $httpBackend to intercept requests containing files.
-   */
-  $provide.decorator('$httpBackend', function($delegate, $window, uploadManager) {
-    return function(method, url, post, callback, headers, timeout, wc) {
-
-      if (hasFile(post)) {
-
-        data = new FormData();
-        angular.forEach(post, function(value, field){
-          data.append(field, value);
-        });
-
-        return prepXHR(method, url, data, callback, headers, timeout, wc, uploadManager).send(data);
-      }
-
-      $delegate(method, url, post, callback, headers, timeout, wc);
-    };
-  });
-
-  /**
    * Checks an object hash to see if it contains a File object, or, if legacy is true, checks to
    * see if an object hash contains an <input type="file" /> element.
    */
@@ -82,24 +21,41 @@ angular.module('ur.file', []).config(['$provide', function($provide) {
       if (data[n] instanceof File) {
         return true;
       }
-      if ((angular.isObject(data[n]) || angular.isArray(data[n])) && hasFile(data[n])) {
+      if (angular.isObject(data[n]) && hasFile(data[n])) {
         return true;
       }
     }
     return false;
   };
 
+  var toFile = function(data){
+    form = new FormData();
+    angular.forEach(data, function(value, field){
+      form.append(field, value);
+    });
+    return form;
+  }
+
+  $provide.decorator('$httpBackend', function($delegate, $window, uploadManager) {
+    return function(method, url, post, callback, headers, timeout, wc) {
+
+      if(post instanceof FormData){
+        delete headers['Content-Type'];
+      }
+
+      $delegate(method, url, post, callback, headers, timeout, wc);
+    };
+  });
+
   /**
    * Prevents $http from executing its default transformation behavior if the data to be
    * transformed contains file data.
    */
   $provide.decorator('$http', function($delegate) {
-    var transformer = $delegate.defaults.transformRequest[0];
-
+    var og = $delegate.defaults.transformRequest;
     $delegate.defaults.transformRequest = [function(data) {
-      return hasFile(data) ? data : transformer(data);
+      return hasFile(data) ? toFile(data) : og(data);
     }];
-
     return $delegate;
   });
 
