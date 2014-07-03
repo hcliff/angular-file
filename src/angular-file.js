@@ -52,7 +52,7 @@ angular.module('ur.file', []).config(['$provide', function($provide) {
    * transformed contains file data.
    */
   $provide.decorator('$http', function($delegate) {
-    var og = $delegate.defaults.transformRequest;
+    var og = $delegate.defaults.transformRequest[0];
     $delegate.defaults.transformRequest = [function(data) {
       return hasFile(data) ? toFile(data) : og(data);
     }];
